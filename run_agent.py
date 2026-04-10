@@ -81,7 +81,7 @@ from agent.error_classifier import classify_api_error, FailoverReason
 from agent.prompt_builder import (
     DEFAULT_AGENT_IDENTITY, PLATFORM_HINTS,
     MEMORY_GUIDANCE, SESSION_SEARCH_GUIDANCE, SKILLS_GUIDANCE,
-    REASONING_EFFORT_GUIDANCE,
+    REASONING_EFFORT_GUIDANCE, format_reasoning_effort_status,
     build_nous_subscription_prompt,
 )
 from agent.model_metadata import (
@@ -3544,6 +3544,7 @@ class AIAgent:
             tool_guidance.append(SKILLS_GUIDANCE)
         if "reasoning_effort" in self.valid_tool_names:
             tool_guidance.append(REASONING_EFFORT_GUIDANCE)
+            tool_guidance.append(format_reasoning_effort_status(self.reasoning_config))
         if tool_guidance:
             prompt_parts.append(" ".join(tool_guidance))
 
@@ -7671,6 +7672,7 @@ class AIAgent:
 
         def _callback(parsed_config, *, level: str, persist: bool = False):
             self.reasoning_config = parsed_config
+            self._cached_system_prompt = None
             persisted = False
             if persist and self.reasoning_update_callback:
                 persisted = bool(self.reasoning_update_callback(level, parsed_config))
