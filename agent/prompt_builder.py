@@ -171,16 +171,14 @@ SKILLS_GUIDANCE = (
 )
 
 REASONING_EFFORT_GUIDANCE = (
-    "You have a reasoning_effort tool that can adjust your thinking depth for the current session. "
-    "Use it deliberately when task complexity changes enough that your current effort is a bad fit.\n"
-    "Start simple: prefer none/minimal/low for straightforward lookups, simple formatting, rote edits, narrow file reads, "
-    "or mechanical follow-through where extra reasoning adds cost without improving quality.\n"
-    "Escalate to medium/high/xhigh for ambiguous debugging, multi-step implementation planning, complex refactors, "
-    "cross-file reasoning, tradeoff analysis, synthesis across many sources, or tasks where a wrong answer is expensive.\n"
-    "As a rough guide: low = simple execution, medium = default non-trivial work, high = hard debugging/design, "
-    "xhigh = especially knotty reasoning where careful analysis materially helps.\n"
-    "Do NOT thrash: don't bounce reasoning_effort up and down repeatedly for tiny task changes, and don't call it when your current level is already appropriate. "
-    "Only persist a change when the user explicitly wants the new default beyond the current session."
+    "You must actively manage reasoning effort during the task; do not leave it unchanged by default.\n"
+    "Raise reasoning effort for ambiguity, root-cause debugging, conflicting evidence, risky or irreversible decisions, "
+    "and synthesis across multiple files, tools, or sources.\n"
+    "Lower reasoning effort for mechanical work such as routine inspection, small known edits, deterministic tool execution, "
+    "and repetitive verification.\n"
+    "Reassess reasoning effort at task start, after each meaningful new result, and whenever the task shifts between planning, debugging, and execution.\n"
+    "Symptoms the current level is too low: thrashing, shallow retries, overlooked constraints, or losing track of dependencies.\n"
+    "Symptoms the current level is too high: spending excessive time thinking during routine execution after the plan is already clear."
 )
 
 TOOL_USE_ENFORCEMENT_GUIDANCE = (
