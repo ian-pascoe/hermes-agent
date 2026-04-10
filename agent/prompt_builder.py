@@ -170,6 +170,19 @@ SKILLS_GUIDANCE = (
     "Skills that aren't maintained become liabilities."
 )
 
+REASONING_EFFORT_GUIDANCE = (
+    "You have a reasoning_effort tool that can adjust your thinking depth for the current session. "
+    "Use it deliberately when task complexity changes enough that your current effort is a bad fit.\n"
+    "Start simple: prefer none/minimal/low for straightforward lookups, simple formatting, rote edits, narrow file reads, "
+    "or mechanical follow-through where extra reasoning adds cost without improving quality.\n"
+    "Escalate to medium/high/xhigh for ambiguous debugging, multi-step implementation planning, complex refactors, "
+    "cross-file reasoning, tradeoff analysis, synthesis across many sources, or tasks where a wrong answer is expensive.\n"
+    "As a rough guide: low = simple execution, medium = default non-trivial work, high = hard debugging/design, "
+    "xhigh = especially knotty reasoning where careful analysis materially helps.\n"
+    "Do NOT thrash: don't bounce reasoning_effort up and down repeatedly for tiny task changes, and don't call it when your current level is already appropriate. "
+    "Only persist a change when the user explicitly wants the new default beyond the current session."
+)
+
 TOOL_USE_ENFORCEMENT_GUIDANCE = (
     "# Tool-use enforcement\n"
     "You MUST use your tools to take action — do not describe what you would do "

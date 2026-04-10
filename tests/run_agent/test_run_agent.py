@@ -670,6 +670,33 @@ class TestBuildSystemPrompt:
         prompt = agent._build_system_prompt()
         assert MEMORY_GUIDANCE not in prompt
 
+    def test_reasoning_effort_guidance_when_tool_loaded(self):
+        from agent.prompt_builder import REASONING_EFFORT_GUIDANCE
+
+        with (
+            patch(
+                "run_agent.get_tool_definitions",
+                return_value=_make_tool_defs("web_search", "reasoning_effort"),
+            ),
+            patch("run_agent.check_toolset_requirements", return_value={}),
+            patch("run_agent.OpenAI"),
+        ):
+            agent = AIAgent(
+                api_key="test-key-1234567890",
+                quiet_mode=True,
+                skip_context_files=True,
+                skip_memory=True,
+            )
+
+        prompt = agent._build_system_prompt()
+        assert REASONING_EFFORT_GUIDANCE in prompt
+
+    def test_no_reasoning_effort_guidance_without_tool(self, agent):
+        from agent.prompt_builder import REASONING_EFFORT_GUIDANCE
+
+        prompt = agent._build_system_prompt()
+        assert REASONING_EFFORT_GUIDANCE not in prompt
+
     def test_includes_datetime(self, agent):
         prompt = agent._build_system_prompt()
         # Should contain current date info like "Conversation started:"
@@ -888,6 +915,74 @@ class TestBuildApiKwargs:
         messages = [{"role": "user", "content": "hi"}]
         kwargs = agent._build_api_kwargs(messages)
         assert kwargs["extra_body"]["reasoning"] == {"enabled": False}
+
+
+class TestReasoningEffortTool:
+    def test_invoke_single_tool_updates_reasoning_config(self, agent):
+        agent.reasoning_config = {"enabled": True, "effort": "medium"}
+
+        result = json.loads(
+            agent._invoke_single_tool(
+                "reasoning_effort",
+                {"level": "low"},
+                effective_task_id="task-1",
+            )
+        )
+
+        assert result["success"] is True
+        assert result["level"] == "low"
+        assert result["reasoning_config"] == {"enabled": True, "effort": "low"}
+        assert agent.reasoning_config == {"enabled": True, "effort": "low"}
+
+    def test_invoke_single_tool_can_disable_reasoning(self, agent):
+        agent.reasoning_config = {"enabled": True, "effort": "medium"}
+
+        result = json.loads(
+            agent._invoke_single_tool(
+                "reasoning_effort",
+                {"level": "none"},
+                effective_task_id="task-1",
+            )
+        )
+
+        assert result["success"] is True
+        assert result["enabled"] is False
+        assert agent.reasoning_config == {"enabled": False}
+
+    def test_invoke_single_tool_rejects_invalid_level(self, agent):
+        agent.reasoning_config = {"enabled": True, "effort": "medium"}
+
+        result = json.loads(
+            agent._invoke_single_tool(
+                "reasoning_effort",
+                {"level": "galaxy-brain"},
+                effective_task_id="task-1",
+            )
+        )
+
+        assert "error" in result
+        assert agent.reasoning_config == {"enabled": True, "effort": "medium"}
+
+    def test_invoke_single_tool_persist_callback(self, agent):
+        calls = []
+
+        def _persist(level, parsed_config):
+            calls.append((level, parsed_config))
+            return True
+
+        agent.reasoning_update_callback = _persist
+
+        result = json.loads(
+            agent._invoke_single_tool(
+                "reasoning_effort",
+                {"level": "high", "persist": True},
+                effective_task_id="task-1",
+            )
+        )
+
+        assert result["success"] is True
+        assert result["persisted"] is True
+        assert calls == [("high", {"enabled": True, "effort": "high"})]
 
     def test_reasoning_not_sent_for_unsupported_openrouter_model(self, agent):
         agent.base_url = "https://openrouter.ai/api/v1"

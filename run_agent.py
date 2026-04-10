@@ -81,6 +81,7 @@ from agent.error_classifier import classify_api_error, FailoverReason
 from agent.prompt_builder import (
     DEFAULT_AGENT_IDENTITY, PLATFORM_HINTS,
     MEMORY_GUIDANCE, SESSION_SEARCH_GUIDANCE, SKILLS_GUIDANCE,
+    REASONING_EFFORT_GUIDANCE,
     build_nous_subscription_prompt,
 )
 from agent.model_metadata import (
@@ -636,6 +637,7 @@ class AIAgent:
         thinking_callback: callable = None,
         reasoning_callback: callable = None,
         clarify_callback: callable = None,
+        reasoning_update_callback: callable = None,
         step_callback: callable = None,
         stream_delta_callback: callable = None,
         interim_assistant_callback: callable = None,
@@ -814,6 +816,7 @@ class AIAgent:
         self.thinking_callback = thinking_callback
         self.reasoning_callback = reasoning_callback
         self.clarify_callback = clarify_callback
+        self.reasoning_update_callback = reasoning_update_callback
         self.step_callback = step_callback
         self.stream_delta_callback = stream_delta_callback
         self.interim_assistant_callback = interim_assistant_callback
@@ -3539,6 +3542,8 @@ class AIAgent:
             tool_guidance.append(SESSION_SEARCH_GUIDANCE)
         if "skill_manage" in self.valid_tool_names:
             tool_guidance.append(SKILLS_GUIDANCE)
+        if "reasoning_effort" in self.valid_tool_names:
+            tool_guidance.append(REASONING_EFFORT_GUIDANCE)
         if tool_guidance:
             prompt_parts.append(" ".join(tool_guidance))
 
@@ -7614,6 +7619,8 @@ class AIAgent:
                 choices=function_args.get("choices"),
                 callback=self.clarify_callback,
             )
+        elif function_name == "reasoning_effort":
+            return self._apply_reasoning_effort(function_args)
         elif function_name == "delegate_task":
             from tools.delegate_tool import delegate_task as _delegate_task
             return _delegate_task(
@@ -7657,6 +7664,34 @@ class AIAgent:
                 out_lines.extend(wrapped or [raw_line])
         body = ("\n" + indent).join(out_lines)
         return f"{indent}{label}{body}"
+
+    def _apply_reasoning_effort(self, function_args: dict) -> str:
+        """Apply a runtime reasoning-effort update for the active agent."""
+        from tools.reasoning_effort_tool import reasoning_effort_tool as _reasoning_effort_tool
+
+        def _callback(parsed_config, *, level: str, persist: bool = False):
+            self.reasoning_config = parsed_config
+            persisted = False
+            if persist and self.reasoning_update_callback:
+                persisted = bool(self.reasoning_update_callback(level, parsed_config))
+            enabled = parsed_config.get("enabled") is not False
+            return {
+                "success": True,
+                "level": level,
+                "enabled": enabled,
+                "reasoning_config": parsed_config,
+                "persisted": persisted,
+                "message": (
+                    f"Reasoning effort set to {level}"
+                    + (" and saved." if persisted else " for this session.")
+                ),
+            }
+
+        return _reasoning_effort_tool(
+            level=function_args.get("level", ""),
+            persist=function_args.get("persist", False),
+            callback=_callback,
+        )
 
     def _execute_tool_calls_concurrent(self, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
         """Execute multiple tool calls concurrently using a thread pool.
@@ -8126,6 +8161,11 @@ class AIAgent:
                 tool_duration = time.time() - tool_start_time
                 if self._should_emit_quiet_tool_messages():
                     self._vprint(f"  {_get_cute_tool_message_impl('clarify', function_args, tool_duration, result=function_result)}")
+            elif function_name == "reasoning_effort":
+                function_result = self._apply_reasoning_effort(function_args)
+                tool_duration = time.time() - tool_start_time
+                if self._should_emit_quiet_tool_messages():
+                    self._vprint(f"  {_get_cute_tool_message_impl('reasoning_effort', function_args, tool_duration, result=function_result)}")
             elif function_name == "delegate_task":
                 from tools.delegate_tool import delegate_task as _delegate_task
                 tasks_arg = function_args.get("tasks")
