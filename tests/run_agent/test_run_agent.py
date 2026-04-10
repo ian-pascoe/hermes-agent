@@ -1420,7 +1420,7 @@ class TestConcurrentToolExecution:
                 tool_call_id=None,
                 session_id=agent.session_id,
                 enabled_tools=list(agent.valid_tool_names),
-
+                agent=agent,
             )
             assert result == "result"
 
@@ -1645,6 +1645,48 @@ class TestRunConversation:
         assert all(call["session_id"] == agent.session_id for call in pre_request_calls)
         assert all("message_count" in c and "messages" not in c for c in pre_request_calls)
         assert all("usage" in c and "response" not in c for c in post_request_calls)
+
+    def test_tool_calls_pass_agent_to_plugin_tools(self):
+        with (
+            patch(
+                "run_agent.get_tool_definitions",
+                return_value=_make_tool_defs("web_search", "plugin_reasoning_effort"),
+            ),
+            patch("run_agent.check_toolset_requirements", return_value={}),
+            patch("run_agent.OpenAI"),
+        ):
+            agent = AIAgent(
+                api_key="test-key-1234567890",
+                quiet_mode=True,
+                skip_context_files=True,
+                skip_memory=True,
+            )
+        agent.client = MagicMock()
+
+        self._setup_agent(agent)
+        tc = _mock_tool_call(name="plugin_reasoning_effort", arguments='{"level":"high"}', call_id="c1")
+        resp1 = _mock_response(content="", finish_reason="tool_calls", tool_calls=[tc])
+        resp2 = _mock_response(content="Done", finish_reason="stop")
+        agent.client.chat.completions.create.side_effect = [resp1, resp2]
+        agent.reasoning_config = {"enabled": True, "effort": "medium"}
+
+        def _fake_handle(function_name, function_args, task_id=None, tool_call_id=None, session_id=None, user_task=None, enabled_tools=None, agent=None):
+            assert function_name == "plugin_reasoning_effort"
+            assert agent is not None
+            agent.reasoning_config = {"enabled": True, "effort": function_args["level"]}
+            return json.dumps({"success": True, "level": function_args["level"]})
+
+        with (
+            patch("run_agent.handle_function_call", side_effect=_fake_handle),
+            patch("hermes_cli.plugins.get_plugin_tool_names", return_value={"plugin_reasoning_effort"}),
+            patch.object(agent, "_persist_session"),
+            patch.object(agent, "_save_trajectory"),
+            patch.object(agent, "_cleanup_task_resources"),
+        ):
+            result = agent.run_conversation("raise reasoning")
+
+        assert result["final_response"] == "Done"
+        assert agent.reasoning_config == {"enabled": True, "effort": "high"}
 
     def test_interrupt_breaks_loop(self, agent):
         self._setup_agent(agent)

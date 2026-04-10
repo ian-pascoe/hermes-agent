@@ -295,6 +295,32 @@ class TestPluginHooks:
         )
         assert results == [{"seen": 2, "mc": 5, "tc": 3}]
 
+    def test_plugin_tool_handler_can_receive_agent_runtime_context(self, tmp_path, monkeypatch):
+        """Registry dispatch can pass a live agent object to plugin tool handlers."""
+        plugins_dir = tmp_path / "hermes_test" / "plugins"
+        register_body = (
+            'import json; '
+            'schema = {"name": "agent_probe", "description": "probe", '
+            '"parameters": {"type": "object", "properties": {}}}; '
+            'ctx.register_tool("agent_probe", "testing", schema, '
+            'lambda args, **kwargs: json.dumps({'
+            '"has_agent": "agent" in kwargs'
+            '}))'
+        )
+        _make_plugin_dir(plugins_dir, "agent_probe_plugin", register_body=register_body)
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes_test"))
+
+        mgr = PluginManager()
+        mgr.discover_and_load()
+
+        from tools.registry import registry
+        fake_agent = object()
+        result = registry.dispatch("agent_probe", {}, task_id="t1", session_id="s1", agent=fake_agent)
+
+        import json
+        parsed = json.loads(result)
+        assert parsed["has_agent"] is True
+
     def test_invalid_hook_name_warns(self, tmp_path, monkeypatch, caplog):
         """Registering an unknown hook name logs a warning."""
         plugins_dir = tmp_path / "hermes_test" / "plugins"

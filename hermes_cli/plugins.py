@@ -142,7 +142,13 @@ class PluginContext:
         description: str = "",
         emoji: str = "",
     ) -> None:
-        """Register a tool in the global registry **and** track it as plugin-provided."""
+        """Register a tool in the global registry **and** track it as plugin-provided.
+
+        Plugin tool handlers may receive extra runtime kwargs during live agent
+        execution, including ``agent``, ``task_id``, ``session_id``, and
+        ``tool_call_id``. Handlers should accept ``**kwargs`` if they want to use
+        that context.
+        """
         from tools.registry import registry
 
         registry.register(

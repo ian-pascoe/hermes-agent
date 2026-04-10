@@ -464,6 +464,7 @@ def handle_function_call(
     session_id: Optional[str] = None,
     user_task: Optional[str] = None,
     enabled_tools: Optional[List[str]] = None,
+    agent: Optional[Any] = None,
 ) -> str:
     """
     Main function call dispatcher that routes calls to the tool registry.
@@ -510,6 +511,19 @@ def handle_function_call(
         except Exception:
             pass
 
+        _dispatch_kwargs = {
+            "task_id": task_id,
+            "user_task": user_task,
+        }
+        try:
+            from hermes_cli.plugins import get_plugin_tool_names
+            if agent is not None and function_name in get_plugin_tool_names():
+                _dispatch_kwargs["agent"] = agent
+                _dispatch_kwargs["session_id"] = session_id
+                _dispatch_kwargs["tool_call_id"] = tool_call_id
+        except Exception:
+            pass
+
         if function_name == "execute_code":
             # Prefer the caller-provided list so subagents can't overwrite
             # the parent's tool set via the process-global.
@@ -522,8 +536,7 @@ def handle_function_call(
         else:
             result = registry.dispatch(
                 function_name, function_args,
-                task_id=task_id,
-                user_task=user_task,
+                **_dispatch_kwargs,
             )
 
         try:
