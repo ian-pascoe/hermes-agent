@@ -50,12 +50,33 @@ class TestGuidanceConstants:
         assert "relevant cross-session context exists" in SESSION_SEARCH_GUIDANCE
         assert "recent turns of the current session" not in SESSION_SEARCH_GUIDANCE
 
-    def test_reasoning_effort_guidance_has_guardrails_and_examples(self):
-        assert "reasoning_effort" in REASONING_EFFORT_GUIDANCE
-        assert "Start simple" in REASONING_EFFORT_GUIDANCE
-        assert "Do NOT thrash" in REASONING_EFFORT_GUIDANCE
-        assert "low" in REASONING_EFFORT_GUIDANCE
-        assert "xhigh" in REASONING_EFFORT_GUIDANCE
+    def test_reasoning_effort_guidance_has_trigger_based_guardrails(self):
+        assert "actively manage reasoning effort" in REASONING_EFFORT_GUIDANCE
+        assert "Raise reasoning effort for ambiguity" in REASONING_EFFORT_GUIDANCE
+        assert "Lower reasoning effort for mechanical work" in REASONING_EFFORT_GUIDANCE
+        assert "Symptoms the current level is too low" in REASONING_EFFORT_GUIDANCE
+        assert "Symptoms the current level is too high" in REASONING_EFFORT_GUIDANCE
+
+    def test_format_reasoning_effort_status_defaults_to_medium(self):
+        from agent.prompt_builder import format_reasoning_effort_status
+
+        assert format_reasoning_effort_status(None) == (
+            "Current reasoning effort: medium. Change it if the task becomes materially simpler or more complex."
+        )
+
+    def test_format_reasoning_effort_status_handles_disabled_reasoning(self):
+        from agent.prompt_builder import format_reasoning_effort_status
+
+        assert format_reasoning_effort_status({"enabled": False}) == (
+            "Current reasoning effort: none. Change it if the task becomes materially simpler or more complex."
+        )
+
+    def test_format_reasoning_effort_status_uses_explicit_effort(self):
+        from agent.prompt_builder import format_reasoning_effort_status
+
+        assert format_reasoning_effort_status({"enabled": True, "effort": "high"}) == (
+            "Current reasoning effort: high. Change it if the task becomes materially simpler or more complex."
+        )
 
 
 # =========================================================================

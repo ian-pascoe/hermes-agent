@@ -664,7 +664,10 @@ class TestBuildSystemPrompt:
         assert MEMORY_GUIDANCE not in prompt
 
     def test_reasoning_effort_guidance_when_tool_loaded(self):
-        from agent.prompt_builder import REASONING_EFFORT_GUIDANCE
+        from agent.prompt_builder import (
+            REASONING_EFFORT_GUIDANCE,
+            format_reasoning_effort_status,
+        )
 
         with (
             patch(
@@ -683,6 +686,36 @@ class TestBuildSystemPrompt:
 
         prompt = agent._build_system_prompt()
         assert REASONING_EFFORT_GUIDANCE in prompt
+        assert format_reasoning_effort_status(agent.reasoning_config) in prompt
+
+    def test_reasoning_effort_prompt_reflects_runtime_level_after_change(self):
+        from agent.prompt_builder import format_reasoning_effort_status
+
+        with (
+            patch(
+                "run_agent.get_tool_definitions",
+                return_value=_make_tool_defs("web_search", "reasoning_effort"),
+            ),
+            patch("run_agent.check_toolset_requirements", return_value={}),
+            patch("run_agent.OpenAI"),
+        ):
+            agent = AIAgent(
+                api_key="test-key-1234567890",
+                quiet_mode=True,
+                skip_context_files=True,
+                skip_memory=True,
+            )
+
+        original_prompt = agent._build_system_prompt()
+        assert format_reasoning_effort_status(None) in original_prompt
+
+        result = json.loads(agent._apply_reasoning_effort({"level": "high"}))
+        assert result["success"] is True
+        assert agent._cached_system_prompt is None
+
+        updated_prompt = agent._build_system_prompt()
+        assert format_reasoning_effort_status({"enabled": True, "effort": "high"}) in updated_prompt
+        assert updated_prompt != original_prompt
 
     def test_no_reasoning_effort_guidance_without_tool(self, agent):
         from agent.prompt_builder import REASONING_EFFORT_GUIDANCE

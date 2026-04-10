@@ -181,6 +181,22 @@ REASONING_EFFORT_GUIDANCE = (
     "Symptoms the current level is too high: spending excessive time thinking during routine execution after the plan is already clear."
 )
 
+
+def format_reasoning_effort_status(reasoning_config: Optional[dict]) -> str:
+    """Return a concise live-status line for the current reasoning effort."""
+    if isinstance(reasoning_config, dict):
+        if reasoning_config.get("enabled") is False:
+            level = "none"
+        else:
+            level = str(reasoning_config.get("effort") or "medium").lower()
+    else:
+        level = "medium"
+
+    return (
+        f"Current reasoning effort: {level}. "
+        "Change it if the task becomes materially simpler or more complex."
+    )
+
 TOOL_USE_ENFORCEMENT_GUIDANCE = (
     "# Tool-use enforcement\n"
     "You MUST use your tools to take action — do not describe what you would do "
