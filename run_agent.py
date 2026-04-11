@@ -7773,7 +7773,7 @@ class AIAgent:
         for tc, name, args in parsed_calls:
             if self.tool_progress_callback:
                 try:
-                    preview = _build_tool_preview(name, args)
+                    preview = _build_tool_preview(name, args, current_reasoning_config=self.reasoning_config)
                     self.tool_progress_callback("tool.started", name, preview, args)
                 except Exception as cb_err:
                     logging.debug(f"Tool progress callback error: {cb_err}")
@@ -8064,7 +8064,11 @@ class AIAgent:
 
             if _block_msg is None and self.tool_progress_callback:
                 try:
-                    preview = _build_tool_preview(function_name, function_args)
+                    preview = _build_tool_preview(
+                        function_name,
+                        function_args,
+                        current_reasoning_config=self.reasoning_config,
+                    )
                     self.tool_progress_callback("tool.started", function_name, preview, function_args)
                 except Exception as cb_err:
                     logging.debug(f"Tool progress callback error: {cb_err}")
