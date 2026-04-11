@@ -175,7 +175,7 @@ def format_reasoning_effort_preview(current_reasoning_config: dict | None, next_
             current_level = "none"
         else:
             current_level = str(current_reasoning_config.get("effort") or "medium").strip().lower() or "medium"
-    return f"reasoning_effort: {current_level} -> {next_level}"
+    return f"{current_level}->{next_level}"
 
 
 
