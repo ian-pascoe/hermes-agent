@@ -7685,7 +7685,7 @@ class AIAgent:
                 "persisted": persisted,
                 "message": (
                     f"Reasoning effort set to {level}"
-                    + (" and saved." if persisted else " for this session.")
+                    + (" and saved." if persisted else " for this run.")
                 ),
             }
 
