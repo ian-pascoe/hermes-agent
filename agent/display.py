@@ -168,14 +168,8 @@ def _oneline(text: str) -> str:
 
 
 def format_reasoning_effort_preview(current_reasoning_config: dict | None, next_level: str) -> str:
-    """Format a reasoning-effort transition preview for tool progress UI."""
-    current_level = "medium"
-    if isinstance(current_reasoning_config, dict):
-        if current_reasoning_config.get("enabled") is False:
-            current_level = "none"
-        else:
-            current_level = str(current_reasoning_config.get("effort") or "medium").strip().lower() or "medium"
-    return f"{current_level}->{next_level}"
+    """Format a reasoning-effort preview for tool progress UI."""
+    return next_level
 
 
 

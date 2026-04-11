@@ -7089,22 +7089,29 @@ class AIAgent:
         from tools.reasoning_effort_tool import reasoning_effort_tool as _reasoning_effort_tool
 
         def _callback(parsed_config, *, level: str, persist: bool = False):
-            self.reasoning_config = parsed_config
-            self._cached_system_prompt = None
+            current_config = self.reasoning_config if isinstance(self.reasoning_config, dict) else None
+            no_change = current_config == parsed_config
             persisted = False
             if persist and self.reasoning_update_callback:
                 persisted = bool(self.reasoning_update_callback(level, parsed_config))
+            if not no_change:
+                self.reasoning_config = parsed_config
+                self._cached_system_prompt = None
             enabled = parsed_config.get("enabled") is not False
+            message = (
+                f"Reasoning effort already at {level}"
+                if no_change
+                else f"Reasoning effort set to {level}"
+            )
+            message += " and saved." if persisted else " for this run."
             return {
                 "success": True,
                 "level": level,
                 "enabled": enabled,
                 "reasoning_config": parsed_config,
                 "persisted": persisted,
-                "message": (
-                    f"Reasoning effort set to {level}"
-                    + (" and saved." if persisted else " for this run.")
-                ),
+                "no_change": no_change,
+                "message": message,
             }
 
         return _reasoning_effort_tool(

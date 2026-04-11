@@ -1007,6 +1007,50 @@ class TestReasoningEffortTool:
         assert result["persisted"] is True
         assert calls == [("high", {"enabled": True, "effort": "high"})]
 
+    def test_invoke_single_tool_reports_no_change_for_same_level(self, agent):
+        agent.reasoning_config = {"enabled": True, "effort": "medium"}
+        agent._cached_system_prompt = "cached prompt"
+
+        result = json.loads(
+            agent._invoke_single_tool(
+                "reasoning_effort",
+                {"level": "medium"},
+                effective_task_id="task-1",
+            )
+        )
+
+        assert result["success"] is True
+        assert result["no_change"] is True
+        assert result["message"] == "Reasoning effort already at medium for this run."
+        assert agent.reasoning_config == {"enabled": True, "effort": "medium"}
+        assert agent._cached_system_prompt == "cached prompt"
+
+    def test_invoke_single_tool_can_persist_same_level_without_mutating_cache(self, agent):
+        calls = []
+
+        def _persist(level, parsed_config):
+            calls.append((level, parsed_config))
+            return True
+
+        agent.reasoning_config = {"enabled": True, "effort": "medium"}
+        agent._cached_system_prompt = "cached prompt"
+        agent.reasoning_update_callback = _persist
+
+        result = json.loads(
+            agent._invoke_single_tool(
+                "reasoning_effort",
+                {"level": "medium", "persist": True},
+                effective_task_id="task-1",
+            )
+        )
+
+        assert result["success"] is True
+        assert result["no_change"] is True
+        assert result["persisted"] is True
+        assert result["message"] == "Reasoning effort already at medium and saved."
+        assert calls == [("medium", {"enabled": True, "effort": "medium"})]
+        assert agent._cached_system_prompt == "cached prompt"
+
     def test_reasoning_not_sent_for_unsupported_openrouter_model(self, agent):
         agent.base_url = "https://openrouter.ai/api/v1"
         agent.model = "minimax/minimax-m2.5"

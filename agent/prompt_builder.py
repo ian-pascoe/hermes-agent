@@ -171,14 +171,8 @@ SKILLS_GUIDANCE = (
 )
 
 REASONING_EFFORT_GUIDANCE = (
-    "You must actively manage reasoning effort during the task; do not leave it unchanged by default.\n"
-    "Raise reasoning effort for ambiguity, root-cause debugging, conflicting evidence, risky or irreversible decisions, "
-    "and synthesis across multiple files, tools, or sources.\n"
-    "Lower reasoning effort for mechanical work such as routine inspection, small known edits, deterministic tool execution, "
-    "and repetitive verification.\n"
-    "Reassess reasoning effort at task start, after each meaningful new result, and whenever the task shifts between planning, debugging, and execution.\n"
-    "Symptoms the current level is too low: thrashing, shallow retries, overlooked constraints, or losing track of dependencies.\n"
-    "Symptoms the current level is too high: spending excessive time thinking during routine execution after the plan is already clear."
+    "You MUST manage reasoning effort actively. Lower it before trivial or routine turns; raise it for ambiguity, debugging, risky changes, or multi-step synthesis.\n"
+    "Reassess at turn start, after meaningful new evidence, and when the task shifts. NEVER leave the current level unchanged by inertia, and NEVER reply to a trivial turn before considering a downshift."
 )
 
 

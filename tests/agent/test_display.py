@@ -89,12 +89,12 @@ class TestBuildToolPreview:
         assert result is not None
         assert "find something" in result
 
-    def test_format_reasoning_effort_preview_defaults_from_medium(self):
-        assert format_reasoning_effort_preview(None, "high") == "medium->high"
+    def test_format_reasoning_effort_preview_returns_target_level(self):
+        assert format_reasoning_effort_preview(None, "high") == "high"
 
-    def test_format_reasoning_effort_preview_maps_disabled_to_none(self):
+    def test_format_reasoning_effort_preview_ignores_current_state(self):
         preview = format_reasoning_effort_preview({"enabled": False}, "low")
-        assert preview == "none->low"
+        assert preview == "low"
 
     def test_reasoning_effort_preview(self):
         result = build_tool_preview(
@@ -102,7 +102,7 @@ class TestBuildToolPreview:
             {"level": "high"},
             current_reasoning_config={"enabled": True, "effort": "low"},
         )
-        assert result == "low->high"
+        assert result == "high"
 
     def test_reasoning_effort_preview_with_persist(self):
         result = build_tool_preview(
@@ -110,7 +110,7 @@ class TestBuildToolPreview:
             {"level": "low", "persist": True},
             current_reasoning_config={"enabled": False},
         )
-        assert result == "none->low (persist)"
+        assert result == "low (persist)"
 
     def test_false_like_args_zero(self):
         """Non-dict falsy values should return None, not crash."""
