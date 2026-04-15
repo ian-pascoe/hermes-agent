@@ -121,6 +121,33 @@ class TestBrowserCleanup:
         mock_soft.assert_called_once_with("task-1")
         mock_close.assert_called_once_with("task-1")
 
+    def test_cleanup_browser_falls_back_to_legacy_default_pid_file(self):
+        """Legacy CDP sessions wrote default.pid; cleanup should still terminate them."""
+        browser_tool = self.browser_tool
+        browser_tool._active_sessions["task-1"] = {
+            "session_name": "cdp_abcd1234",
+            "bb_session_id": None,
+        }
+        browser_tool._session_last_activity["task-1"] = 123.0
+
+        def fake_isfile(path):
+            return path.endswith("default.pid")
+
+        with (
+            patch("tools.browser_tool._maybe_stop_recording"),
+            patch("tools.browser_tool._run_browser_command", return_value={"success": True}),
+            patch("tools.browser_tool.os.path.exists", return_value=True),
+            patch("tools.browser_tool.os.path.isfile", side_effect=fake_isfile),
+            patch("tools.browser_tool.Path.read_text", return_value="4242"),
+            patch("tools.browser_tool.os.kill") as mock_kill,
+            patch("tools.browser_tool.shutil.rmtree") as mock_rmtree,
+            patch("tools.browser_tool._socket_safe_tmpdir", return_value="/tmp"),
+        ):
+            browser_tool.cleanup_browser("task-1")
+
+        mock_kill.assert_called_once_with(4242, browser_tool.signal.SIGTERM)
+        mock_rmtree.assert_called_once_with("/tmp/agent-browser-cdp_abcd1234", ignore_errors=True)
+
     def test_emergency_cleanup_clears_all_tracking_state(self):
         browser_tool = self.browser_tool
         browser_tool._cleanup_done = False

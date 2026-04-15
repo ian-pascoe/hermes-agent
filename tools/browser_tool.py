@@ -1176,6 +1176,14 @@ def _run_browser_command(
         
         browser_env = {**os.environ}
 
+        # Keep agent-browser's daemon session identity aligned with Hermes'
+        # per-task session name even in remote CDP mode. Without this,
+        # agent-browser falls back to its internal "default" session while
+        # Hermes still allocates a unique socket dir. That split breaks
+        # Browserless/CDP daemon reuse and makes persisted remote sessions
+        # (cookies, current page, auth state) flaky across browser_* calls.
+        browser_env["AGENT_BROWSER_SESSION"] = session_info["session_name"]
+
         # Ensure subprocesses inherit the same browser-specific PATH fallbacks
         # used during CLI discovery.
         browser_env["PATH"] = _merge_browser_path(browser_env.get("PATH", ""))
@@ -2290,8 +2298,14 @@ def cleanup_browser(task_id: Optional[str] = None) -> None:
         if session_name:
             socket_dir = os.path.join(_socket_safe_tmpdir(), f"agent-browser-{session_name}")
             if os.path.exists(socket_dir):
-                # agent-browser writes {session}.pid in the socket dir
+                # agent-browser writes {session}.pid in the socket dir when
+                # AGENT_BROWSER_SESSION is set. Older CDP sessions used the
+                # internal default session name and wrote default.pid instead.
                 pid_file = os.path.join(socket_dir, f"{session_name}.pid")
+                if not os.path.isfile(pid_file):
+                    legacy_pid_file = os.path.join(socket_dir, "default.pid")
+                    if os.path.isfile(legacy_pid_file):
+                        pid_file = legacy_pid_file
                 if os.path.isfile(pid_file):
                     try:
                         daemon_pid = int(Path(pid_file).read_text().strip())
