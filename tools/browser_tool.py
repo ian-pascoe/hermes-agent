@@ -409,10 +409,21 @@ def _socket_safe_tmpdir() -> str:
     return tempfile.gettempdir()
 
 
-# Track active sessions per task
-# Stores: session_name (always), bb_session_id + cdp_url (cloud mode only)
-_active_sessions: Dict[str, Dict[str, str]] = {}  # task_id -> {session_name, ...}
+# Track active sessions per task.
+# Stores: session_name (always), bb_session_id + cdp_url (cloud mode only),
+# plus optional shared-CDP metadata for Browserless managed persistence.
+_active_sessions: Dict[str, Dict[str, Any]] = {}  # task_id -> session_info
 _recording_sessions: set = set()  # task_ids with active recordings
+
+# Shared direct-CDP sessions keyed by a stable persistence identity (for example
+# a Browserless launch URL that pins a persistent userDataDir). Multiple task IDs
+# can alias the same underlying agent-browser daemon/browser session when they
+# target the same persisted remote browser profile.
+_shared_cdp_sessions: Dict[str, Dict[str, Any]] = {}
+
+# Per-session command locks. Shared-CDP aliases resolve to the same lock key so
+# parallel tasks do not stampede the same daemon/browser state.
+_session_command_locks: Dict[str, threading.RLock] = {}
 
 # Flag to track if cleanup has been done
 _cleanup_done = False
@@ -462,6 +473,8 @@ def _emergency_cleanup_all_sessions():
             _active_sessions.clear()
             _session_last_activity.clear()
             _recording_sessions.clear()
+            _shared_cdp_sessions.clear()
+            _session_command_locks.clear()
 
 
 # Register cleanup via atexit only.  Previous versions installed SIGINT/SIGTERM
@@ -808,7 +821,7 @@ BROWSER_TOOL_SCHEMAS = [
 # Utility Functions
 # ============================================================================
 
-def _create_local_session(task_id: str) -> Dict[str, str]:
+def _create_local_session(task_id: str) -> Dict[str, Any]:
     import uuid
     session_name = f"h_{uuid.uuid4().hex[:10]}"
     logger.info("Created local browser session %s for task %s",
@@ -821,21 +834,150 @@ def _create_local_session(task_id: str) -> Dict[str, str]:
     }
 
 
-def _create_cdp_session(task_id: str, cdp_url: str) -> Dict[str, str]:
+def _create_cdp_session(task_id: str, cdp_url: str, shared_cdp_key: Optional[str] = None) -> Dict[str, Any]:
     """Create a session that connects to a user-supplied CDP endpoint."""
     import uuid
     session_name = f"cdp_{uuid.uuid4().hex[:10]}"
     logger.info("Created CDP browser session %s → %s for task %s",
                 session_name, cdp_url, task_id)
-    return {
+    session: Dict[str, Any] = {
         "session_name": session_name,
         "bb_session_id": None,
         "cdp_url": cdp_url,
         "features": {"cdp_override": True},
     }
+    if shared_cdp_key:
+        session["_shared_cdp_key"] = shared_cdp_key
+    return session
 
 
-def _get_session_info(task_id: Optional[str] = None) -> Dict[str, str]:
+def _get_cdp_shared_session_key(cdp_url: str) -> Optional[str]:
+    """Return a stable reuse key for direct CDP sessions with persisted profiles.
+
+    Browserless launch URLs can embed a persistent ``userDataDir`` in the
+    ``launch=...`` payload. Reusing the same remote persisted profile across
+    multiple Hermes task IDs should *not* create multiple local agent-browser
+    daemons, because each new daemon reconnects to the Browserless launch URL
+    and triggers a second browser launch against the same profile.
+
+    When a stable ``userDataDir`` is present we collapse those task IDs onto a
+    single shared session keyed by ``scheme://host/path + userDataDir``.
+    Generic direct CDP endpoints without persisted-profile semantics return
+    ``None`` and keep the existing per-task isolation behavior.
+    """
+    raw = (cdp_url or "").strip()
+    if not raw:
+        return None
+
+    try:
+        from urllib.parse import parse_qs, unquote, urlparse, urlunparse
+
+        parsed = urlparse(raw)
+        query = parse_qs(parsed.query, keep_blank_values=True)
+    except Exception:
+        return None
+
+    launch_payload: Dict[str, Any] = {}
+    launch_values = query.get("launch") or []
+    if launch_values:
+        launch_raw = str(launch_values[-1]).strip()
+        if launch_raw:
+            try:
+                decoded = json.loads(unquote(launch_raw))
+                if isinstance(decoded, dict):
+                    launch_payload = decoded
+            except Exception as exc:
+                logger.debug("Could not parse Browserless launch payload from %s: %s", raw, exc)
+
+    user_data_dir = str(
+        launch_payload.get("userDataDir")
+        or launch_payload.get("user_data_dir")
+        or (query.get("userDataDir") or query.get("user_data_dir") or [""])[-1]
+    ).strip()
+    if not user_data_dir:
+        return None
+
+    base_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", "", ""))
+    if not base_url:
+        return None
+
+    return f"{base_url}|{user_data_dir}"
+
+
+def _get_session_command_lock(session_info: Dict[str, Any]) -> threading.RLock:
+    """Return a per-session command lock, collapsing shared CDP aliases."""
+    lock_key = str(session_info.get("_shared_cdp_key") or session_info.get("session_name") or "default")
+    with _cleanup_lock:
+        lock = _session_command_locks.get(lock_key)
+        if lock is None:
+            lock = threading.RLock()
+            _session_command_locks[lock_key] = lock
+        return lock
+
+
+def _discard_session_command_lock(session_info: Dict[str, Any]) -> None:
+    """Drop a session command lock after the final session teardown."""
+    lock_key = str(session_info.get("_shared_cdp_key") or session_info.get("session_name") or "default")
+    with _cleanup_lock:
+        _session_command_locks.pop(lock_key, None)
+
+
+def _detach_shared_cdp_task(task_id: str, session_info: Dict[str, Any]) -> bool:
+    """Detach a task from a shared direct-CDP session.
+
+    Returns ``True`` when this was the last attached task and cleanup should
+    proceed with closing the underlying daemon/browser. Returns ``False`` when
+    another task still owns the shared session, in which case only this task's
+    local tracking should be removed.
+    """
+    shared_key = str(session_info.get("_shared_cdp_key") or "").strip()
+    if not shared_key:
+        return True
+
+    with _cleanup_lock:
+        shared = _shared_cdp_sessions.get(shared_key)
+        if shared is not None:
+            task_ids = shared.get("task_ids")
+            if isinstance(task_ids, set) and task_id in task_ids:
+                if len(task_ids) > 1:
+                    task_ids.discard(task_id)
+                    _active_sessions.pop(task_id, None)
+                    _session_last_activity.pop(task_id, None)
+                    _recording_sessions.discard(task_id)
+                    logger.debug(
+                        "Detached task %s from shared CDP session %s; %d task(s) still attached",
+                        task_id,
+                        session_info.get("session_name"),
+                        len(task_ids),
+                    )
+                    return False
+                task_ids.discard(task_id)
+            _shared_cdp_sessions.pop(shared_key, None)
+            return True
+
+        # Fallback: if the shared registry was lost, infer liveness from any
+        # remaining task entries that still point at the same shared key.
+        other_aliases = [
+            other_task_id
+            for other_task_id, other_info in _active_sessions.items()
+            if other_task_id != task_id and other_info.get("_shared_cdp_key") == shared_key
+        ]
+        if other_aliases:
+            _active_sessions.pop(task_id, None)
+            _session_last_activity.pop(task_id, None)
+            _recording_sessions.discard(task_id)
+            logger.debug(
+                "Detached task %s from inferred shared CDP session %s; aliases still active: %s",
+                task_id,
+                session_info.get("session_name"),
+                other_aliases,
+            )
+            return False
+
+    return True
+
+
+def _get_session_info(task_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Get or create session info for the given task.
     
@@ -867,6 +1009,28 @@ def _get_session_info(task_id: Optional[str] = None) -> Dict[str, str]:
     # Create session outside the lock (network call in cloud mode)
     cdp_override = _get_cdp_override()
     if cdp_override:
+        shared_cdp_key = _get_cdp_shared_session_key(cdp_override)
+        if shared_cdp_key:
+            with _cleanup_lock:
+                if task_id in _active_sessions:
+                    return _active_sessions[task_id]
+                shared = _shared_cdp_sessions.get(shared_cdp_key)
+                if shared is not None:
+                    task_ids = shared.setdefault("task_ids", set())
+                    if isinstance(task_ids, set):
+                        task_ids.add(task_id)
+                    session_info = shared["session_info"]
+                    _active_sessions[task_id] = session_info
+                    return session_info
+
+                session_info = _create_cdp_session(task_id, cdp_override, shared_cdp_key=shared_cdp_key)
+                _shared_cdp_sessions[shared_cdp_key] = {
+                    "session_info": session_info,
+                    "task_ids": {task_id},
+                }
+                _active_sessions[task_id] = session_info
+                return session_info
+
         session_info = _create_cdp_session(task_id, cdp_override)
     else:
         provider = _get_cloud_provider()
@@ -2159,6 +2323,11 @@ def cleanup_browser(task_id: Optional[str] = None) -> None:
     if session_info:
         bb_session_id = session_info.get("bb_session_id", "unknown")
         logger.debug("Found session for task %s: bb_session_id=%s", task_id, bb_session_id)
+
+        should_close = _detach_shared_cdp_task(task_id, session_info)
+        if not should_close:
+            logger.debug("Shared CDP session still active after detaching task %s", task_id)
+            return
         
         # Stop auto-recording before closing (saves the file)
         _maybe_stop_recording(task_id)
@@ -2174,6 +2343,7 @@ def cleanup_browser(task_id: Optional[str] = None) -> None:
         with _cleanup_lock:
             _active_sessions.pop(task_id, None)
             _session_last_activity.pop(task_id, None)
+            _recording_sessions.discard(task_id)
         
         # Cloud mode: close the cloud browser session via provider API
         if bb_session_id:
@@ -2205,6 +2375,8 @@ def cleanup_browser(task_id: Optional[str] = None) -> None:
                     except (ProcessLookupError, ValueError, PermissionError, OSError):
                         logger.debug("Could not kill daemon pid for %s (already dead or inaccessible)", session_name)
                 shutil.rmtree(socket_dir, ignore_errors=True)
+
+        _discard_session_command_lock(session_info)
         
         logger.debug("Removed task %s from active sessions", task_id)
     else:
@@ -2221,6 +2393,10 @@ def cleanup_all_browsers() -> None:
         task_ids = list(_active_sessions.keys())
     for task_id in task_ids:
         cleanup_browser(task_id)
+
+    with _cleanup_lock:
+        _shared_cdp_sessions.clear()
+        _session_command_locks.clear()
 
     # Reset cached lookups so they are re-evaluated on next use.
     global _cached_agent_browser, _agent_browser_resolved
