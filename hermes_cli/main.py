@@ -1599,15 +1599,15 @@ def _clear_stale_openai_base_url():
 
 # (task_key, display_name, short_description)
 _AUX_TASKS: list[tuple[str, str, str]] = [
-    ("vision",           "Vision",           "image/screenshot analysis"),
-    ("compression",      "Compression",      "context summarization"),
-    ("web_extract",      "Web extract",      "web page summarization"),
-    ("session_search",   "Session search",   "past-conversation recall"),
-    ("approval",         "Approval",         "smart command approval"),
-    ("mcp",              "MCP",              "MCP tool reasoning"),
-    ("flush_memories",   "Flush memories",   "memory consolidation"),
+    ("vision", "Vision", "image/screenshot analysis"),
+    ("compression", "Compression", "context summarization"),
+    ("web_extract", "Web extract", "web page summarization"),
+    ("session_search", "Session search", "past-conversation recall"),
+    ("approval", "Approval", "smart command approval"),
+    ("mcp", "MCP", "MCP tool reasoning"),
+    ("flush_memories", "Flush memories", "memory consolidation"),
     ("title_generation", "Title generation", "session titles"),
-    ("skills_hub",       "Skills hub",       "skills search/install"),
+    ("skills_hub", "Skills hub", "skills search/install"),
 ]
 
 
@@ -1706,7 +1706,7 @@ def _aux_config_menu() -> None:
         print("  Auxiliary models — side-task routing")
         print()
         print("  Side tasks (vision, compression, web extraction, etc.) default")
-        print("  to your main chat model.  \"auto\" means \"use my main model\" —")
+        print('  to your main chat model.  "auto" means "use my main model" —')
         print("  Hermes only falls back to a lightweight backend (OpenRouter,")
         print("  Nous Portal) if the main model is unavailable.  Override a")
         print("  task below if you want it pinned to a specific provider/model.")
@@ -1717,15 +1717,20 @@ def _aux_config_menu() -> None:
         desc_col = max(len(desc) for _, _, desc in _AUX_TASKS) + 4
         entries: list[tuple[str, str]] = []
         for task_key, name, desc in _AUX_TASKS:
-            task_cfg = aux.get(task_key, {}) if isinstance(aux.get(task_key), dict) else {}
+            task_cfg = (
+                aux.get(task_key, {}) if isinstance(aux.get(task_key), dict) else {}
+            )
             current = _format_aux_current(task_cfg)
-            label = f"{name.ljust(name_col)}{('(' + desc + ')').ljust(desc_col)}{current}"
+            label = (
+                f"{name.ljust(name_col)}{('(' + desc + ')').ljust(desc_col)}{current}"
+            )
             entries.append((task_key, label))
         entries.append(("__reset__", "Reset all to auto"))
-        entries.append(("__back__",  "Back"))
+        entries.append(("__back__", "Back"))
 
         idx = _prompt_provider_choice(
-            [label for _, label in entries], default=0,
+            [label for _, label in entries],
+            default=0,
         )
         if idx is None:
             return
@@ -1773,7 +1778,9 @@ def _aux_select_for_task(task: str) -> None:
 
     entries: list[tuple[str, str, list[str]]] = []  # (slug, label, models)
     # "auto" always first
-    auto_marker = "  ← current" if current_provider == "auto" and not current_base_url else ""
+    auto_marker = (
+        "  ← current" if current_provider == "auto" and not current_base_url else ""
+    )
     entries.append(("__auto__", f"auto (recommended){auto_marker}", []))
 
     for p in providers:
@@ -1782,7 +1789,9 @@ def _aux_select_for_task(task: str) -> None:
         total = p.get("total_models", 0)
         models = p.get("models") or []
         model_hint = f" — {total} models" if total else ""
-        marker = "  ← current" if slug == current_provider and not current_base_url else ""
+        marker = (
+            "  ← current" if slug == current_provider and not current_base_url else ""
+        )
         entries.append((slug, f"{name}{model_hint}{marker}", list(models)))
 
     # Custom endpoint (raw base_url)
@@ -1850,14 +1859,17 @@ def _aux_flow_provider_model(
         selected = val or ""
     else:
         selected = _prompt_model_selection(
-            model_list, current_model=current_model, pricing=pricing,
+            model_list,
+            current_model=current_model,
+            pricing=pricing,
         )
         if selected is None:
             print("No change.")
             return
 
-    _save_aux_choice(task, provider=provider_slug, model=selected or "",
-                     base_url="", api_key="")
+    _save_aux_choice(
+        task, provider=provider_slug, model=selected or "", base_url="", api_key=""
+    )
     if selected:
         print(f"{display_name}: {provider_slug} · {selected}")
     else:
@@ -1877,7 +1889,9 @@ def _aux_flow_custom_endpoint(task: str, task_cfg: dict) -> None:
     print("  Provide an OpenAI-compatible base URL (e.g. http://localhost:11434/v1)")
     print()
     try:
-        url_prompt = f"Base URL [{current_base_url}]: " if current_base_url else "Base URL: "
+        url_prompt = (
+            f"Base URL [{current_base_url}]: " if current_base_url else "Base URL: "
+        )
         url = input(url_prompt).strip()
     except (KeyboardInterrupt, EOFError):
         print()
@@ -1887,20 +1901,30 @@ def _aux_flow_custom_endpoint(task: str, task_cfg: dict) -> None:
         print("No URL provided. No change.")
         return
     try:
-        model_prompt = f"Model slug (optional) [{current_model}]: " if current_model else "Model slug (optional): "
+        model_prompt = (
+            f"Model slug (optional) [{current_model}]: "
+            if current_model
+            else "Model slug (optional): "
+        )
         model = input(model_prompt).strip()
     except (KeyboardInterrupt, EOFError):
         print()
         return
     model = model or current_model
     try:
-        api_key = getpass.getpass("API key (optional, blank = use OPENAI_API_KEY): ").strip()
+        api_key = getpass.getpass(
+            "API key (optional, blank = use OPENAI_API_KEY): "
+        ).strip()
     except (KeyboardInterrupt, EOFError):
         print()
         return
 
     _save_aux_choice(
-        task, provider="custom", model=model, base_url=url, api_key=api_key,
+        task,
+        provider="custom",
+        model=model,
+        base_url=url,
+        api_key=api_key,
     )
     short_url = url.replace("https://", "").replace("http://", "").rstrip("/")
     print(f"{display_name}: custom ({short_url})" + (f" · {model}" if model else ""))
@@ -5250,7 +5274,6 @@ def _cmd_update_impl(args, gateway_mode: bool):
 
     # Fetch and pull
     try:
-
         print("→ Fetching updates...")
         fetch_result = subprocess.run(
             git_cmd + ["fetch", "origin"],
@@ -5284,37 +5307,22 @@ def _cmd_update_impl(args, gateway_mode: bool):
             check=True,
         )
         current_branch = result.stdout.strip()
+        target_branch = "main"
 
-        # Always update against main
-        branch = "main"
+        if current_branch == "HEAD":
+            print("✗ Cannot update from detached HEAD.")
+            print("  Please check out a branch first, then run 'hermes update' again.")
+            sys.exit(1)
 
-        # If user is on a non-main branch or detached HEAD, switch to main
-        if current_branch != "main":
-            label = (
-                "detached HEAD"
-                if current_branch == "HEAD"
-                else f"branch '{current_branch}'"
-            )
-            print(f"  ⚠ Currently on {label} — switching to main for update...")
-            # Stash before checkout so uncommitted work isn't lost
-            auto_stash_ref = _stash_local_changes_if_needed(git_cmd, PROJECT_ROOT)
-            subprocess.run(
-                git_cmd + ["checkout", "main"],
-                cwd=PROJECT_ROOT,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-        else:
-            auto_stash_ref = _stash_local_changes_if_needed(git_cmd, PROJECT_ROOT)
+        auto_stash_ref = _stash_local_changes_if_needed(git_cmd, PROJECT_ROOT)
 
         prompt_for_restore = auto_stash_ref is not None and (
             gateway_mode or (sys.stdin.isatty() and sys.stdout.isatty())
         )
 
-        # Check if there are updates
+        # Check if there are upstream updates to replay onto the current branch.
         result = subprocess.run(
-            git_cmd + ["rev-list", f"HEAD..origin/{branch}", "--count"],
+            git_cmd + ["rev-list", f"HEAD..origin/{target_branch}", "--count"],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -5324,7 +5332,6 @@ def _cmd_update_impl(args, gateway_mode: bool):
 
         if commit_count == 0:
             _invalidate_update_cache()
-            # Restore stash and switch back to original branch if we moved
             if auto_stash_ref is not None:
                 _restore_stashed_changes(
                     git_cmd,
@@ -5333,49 +5340,29 @@ def _cmd_update_impl(args, gateway_mode: bool):
                     prompt_user=prompt_for_restore,
                     input_fn=gw_input_fn,
                 )
-            if current_branch not in ("main", "HEAD"):
-                subprocess.run(
-                    git_cmd + ["checkout", current_branch],
-                    cwd=PROJECT_ROOT,
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
             print("✓ Already up to date!")
             return
 
         print(f"→ Found {commit_count} new commit(s)")
-
-        print("→ Pulling updates...")
+        print(
+            f"→ Rebasing current branch '{current_branch}' onto origin/{target_branch}..."
+        )
         update_succeeded = False
         try:
-            pull_result = subprocess.run(
-                git_cmd + ["pull", "--ff-only", "origin", branch],
+            rebase_result = subprocess.run(
+                git_cmd + ["rebase", f"origin/{target_branch}"],
                 cwd=PROJECT_ROOT,
                 capture_output=True,
                 text=True,
             )
-            if pull_result.returncode != 0:
-                # ff-only failed — local and remote have diverged (e.g. upstream
-                # force-pushed or rebase).  Since local changes are already
-                # stashed, reset to match the remote exactly.
-                print(
-                    "  ⚠ Fast-forward not possible (history diverged), resetting to match remote..."
-                )
-                reset_result = subprocess.run(
-                    git_cmd + ["reset", "--hard", f"origin/{branch}"],
-                    cwd=PROJECT_ROOT,
-                    capture_output=True,
-                    text=True,
-                )
-                if reset_result.returncode != 0:
-                    print(f"✗ Failed to reset to origin/{branch}.")
-                    if reset_result.stderr.strip():
-                        print(f"  {reset_result.stderr.strip()}")
-                    print(
-                        "  Try manually: git fetch origin && git reset --hard origin/main"
-                    )
-                    sys.exit(1)
+            if rebase_result.returncode != 0:
+                print(f"✗ Rebase onto origin/{target_branch} failed.")
+                if rebase_result.stderr.strip():
+                    print(f"  {rebase_result.stderr.strip()}")
+                print("  Resolve conflicts, then run one of:")
+                print("    git rebase --continue")
+                print("    git rebase --abort")
+                sys.exit(1)
             update_succeeded = True
         finally:
             if auto_stash_ref is not None:
@@ -5385,7 +5372,8 @@ def _cmd_update_impl(args, gateway_mode: bool):
                     print(
                         f"  ℹ️  Local changes preserved in stash (ref: {auto_stash_ref})"
                     )
-                    print(f"  Restore manually with: git stash apply")
+                    print("  Restore manually after finishing or aborting the rebase:")
+                    print(f"    git stash apply {auto_stash_ref}")
                 else:
                     _restore_stashed_changes(
                         git_cmd,
@@ -5407,7 +5395,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
             )
 
         # Fork upstream sync logic (only for main branch on forks)
-        if is_fork and branch == "main":
+        if is_fork and current_branch == target_branch:
             _sync_with_upstream_if_needed(git_cmd, PROJECT_ROOT)
 
         # Reinstall Python dependencies. Prefer .[all], but if one optional extra
@@ -6222,7 +6210,9 @@ def cmd_dashboard(args):
         import uvicorn  # noqa: F401
     except ImportError:
         print("Web UI dependencies not installed.")
-        print(f"Install them with:  {sys.executable} -m pip install 'fastapi' 'uvicorn[standard]'")
+        print(
+            f"Install them with:  {sys.executable} -m pip install 'fastapi' 'uvicorn[standard]'"
+        )
         sys.exit(1)
 
     if not _build_web_ui(PROJECT_ROOT / "web", fatal=True):
